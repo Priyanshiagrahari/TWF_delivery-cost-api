@@ -1,7 +1,9 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request
 from itertools import permutations
+from typing import Dict
+import os
 
-app = Flask(__name__)
+app = FastAPI()
 
 # Product availability at each center
 center_stock = {
@@ -29,15 +31,12 @@ def get_cost(path):
         cost += costs.get((path[i], path[i+1]), float('inf'))
     return cost
 
-def calculate_min_cost(order):
+def calculate_min_cost(order: Dict[str, int]):
     centers = ["C1", "C2", "C3"]
     min_cost = float('inf')
 
     for start in centers:
-        required = {}
-        for item, qty in order.items():
-            if qty > 0:
-                required[item] = qty
+        required = {item: qty for item, qty in order.items() if qty > 0}
 
         product_to_center = {}
         for item in required:
@@ -53,8 +52,7 @@ def calculate_min_cost(order):
             best = float('inf')
             for route in all_routes:
                 full_path = [center]
-                for loc in route:
-                    full_path.extend([loc, "L1"])
+                full_path.extend(route)
                 full_path.append("L1")
                 best = min(best, get_cost(full_path))
             return best if pickups else costs[(center, "L1")]
@@ -65,20 +63,22 @@ def calculate_min_cost(order):
 
     return min_cost
 
-@app.route('/')
+@app.get("/")
 def home():
-    return "Welcome to Delivery Cost API. Use POST /calculate"
+    return {"message": "Welcome to Delivery Cost API. Use POST /calculate"}
 
-@app.route('/calculate', methods=['POST'])
-def calculate():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid input"}), 400
+@app.post("/calculate")
+async def calculate(request: Request):
     try:
+        data = await request.json()
         cost = calculate_min_cost(data)
-        return jsonify({"minimum_cost": cost})
+        return {"minimum_cost": cost}
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return {"error": str(e)}
 
-if __name__ == '__main__':
-    app.run(debug=True)
+
+# Deployment entry
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("app:app", host="0.0.0.0", port=port)
